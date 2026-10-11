@@ -9,12 +9,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev libudev-dev libvulkan-dev libx11-dev libxkbcommon-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# OSS Scanner supplies the Pickaxe Miner checkout as the Docker build context.
 COPY . /src
 WORKDIR /src
 
-# Preserve the full, default-feature build for static code review.
+# Fetch all dependencies while the build environment has Internet access.
 RUN cargo fetch --locked
+
+# Compile the full default mining application, including the portable GPU engine.
 RUN cargo build --locked --lib --bins
 
-# Compile test binaries without requiring hardware or live network access.
-RUN cargo test --locked --no-run
+# Run CPU-safe Rust tests using the same GPU exclusions as the project's Linux CI.
+# Do not silence failures: an unhealthy scanner build should be reported.
+RUN cargo test --locked --all-features --no-fail-fast -- --skip if_cuda --skip if_wgpu
+
+# Test the shared Rust mining engine independently.
+RUN cargo test --locked --manifest-path rust-engine/Cargo.toml
